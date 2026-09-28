@@ -60,14 +60,15 @@ Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExe}"; Description: "지금 자동 더빙 TTS 실행"; Flags: nowait postinstall skipifsilent
+; GUI 자동 업데이트(/SILENT)에서도 다시 켜지도록 skipifsilent 를 붙이지 않는다
+Filename: "{app}\{#AppExe}"; Description: "지금 자동 더빙 TTS 실행"; Flags: nowait postinstall
 
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM {#AppExe}"; Flags: runhidden; RunOnceId: "StopApp"
 Filename: "powershell.exe"; Parameters: "-NoProfile -Command ""Get-CimInstance Win32_Process | Where-Object {{ $_.CommandLine -like '*{app}\src\ocr_server*' -or $_.CommandLine -like '*{app}\src\custom_tts_server*' } | ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force }"""; Flags: runhidden; RunOnceId: "StopServers"
 
 [Code]
-{ 실행 중인 앱을 끄고 덮어쓴다 }
+{ 실행 중인 앱을 끄고 덮어쓴다 (GUI 자동 업데이트는 스스로 먼저 종료한다) }
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   ResultCode: Integer;

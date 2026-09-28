@@ -194,6 +194,8 @@ class App:
         ttk.Button(top, text="설정 (.env)", command=lambda: EnvDialog(root, self._reload_voices)).pack(
             side="right", padx=(2, 16)
         )
+        self.update_btn = ttk.Button(top, text="업데이트 확인", command=lambda: self.check_update(manual=True))
+        self.update_btn.pack(side="right", padx=2)
 
         # --- 영역 ---
         reg = ttk.LabelFrame(outer, text="화면 영역", padding=8)
@@ -296,6 +298,8 @@ class App:
         root.protocol("WM_DELETE_WINDOW", self.on_close)
         root.after(100, self._poll_log)
         self.log(f"사용 가능한 목소리 {len(self.voices)}개 (Edge 3 + API 키 설정 시 Typecast/Google + 커스텀)")
+        self._updating = False
+        root.after(3000, lambda: self.check_update(manual=False))  # 시작 후 조용히 한 번 확인
 
     # ---------- 로그·상태 ----------
     def log(self, msg: str) -> None:
@@ -345,6 +349,92 @@ class App:
             self._refresh_voice_presets()
 
         SpeakerEditor(self.root, title, self.settings[key], self.voices, save)
+
+    # ---------- 업데이트 ----------
+    def check_update(self, manual: bool) -> None:
+        """GitHub 최신 릴리스를 확인한다. manual 이 아니면(시작 시 자동) 새 버전이 있을 때만 말을 건다."""
+        if self._updating:
+            return
+        self._updating = True
+        self.update_btn.configure(state="disabled")
+        threading.Thread(target=self._do_check_update, args=(manual,), daemon=True).start()
+
+    def _ask_on_main(self, title: str, message: str) -> bool:
+        result = {}
+        done = threading.Event()
+
+        def ask():
+            result["ok"] = messagebox.askyesno(title, message, parent=self.root)
+            done.set()
+
+        self.root.after(0, ask)
+        done.wait()
+        return result.get("ok", False)
+
+    def _do_check_update(self, manual: bool) -> None:
+        import updater
+
+        installing = False
+        try:
+            try:
+                release = updater.fetch_latest_release()
+            except (OSError, ValueError) as e:
+                self.log(f"[업데이트] 확인 실패: {e}")
+                return
+            if release is None:
+                if manual:
+                    self.log("[업데이트] 아직 배포된 릴리스가 없습니다.")
+                return
+            latest = release.get("name") or release.get("tag_name", "")
+            if not updater.is_newer(release):
+                if manual:
+                    self.log(f"[업데이트] 이미 최신 버전입니다 (v{VERSION}).")
+                    self.root.after(0, lambda: messagebox.showinfo("업데이트", "이미 최신 버전입니다.", parent=self.root))
+                return
+            notes = updater.release_notes(release)
+            self.log(f"[업데이트] 새 버전 {latest} 이 있습니다 (현재 v{VERSION}).")
+
+            if updater.INSTALLED:
+                asset = updater.installer_asset(release)
+                if asset is None:
+                    self.log(f"[업데이트] {latest} 릴리스에 설치 파일이 없습니다: {updater.RELEASES_URL}")
+                    return
+                if not self._ask_on_main(
+                    "업데이트",
+                    f"새 버전 {latest} 이 있습니다 (현재 v{VERSION}).\n\n{notes}\n\n"
+                    "지금 설치할까요? 더빙이 정지되고, 설치가 끝나면 프로그램이 자동으로 다시 열립니다.\n"
+                    "설정·화자 표·EasyOCR 환경은 그대로 유지됩니다.",
+                ):
+                    self.log("[업데이트] 나중에 하기로 했습니다.")
+                    return
+                self.log(f"[업데이트] 설치 파일 다운로드 중... ({asset.get('size', 0) / 1e6:.0f} MB)")
+                try:
+                    setup = updater.download_asset(asset)
+                except OSError as e:
+                    self.log(f"[업데이트] 다운로드 실패: {e}")
+                    return
+                self.dubber.stop()
+                self.log("[업데이트] 설치를 시작합니다. 끝나면 프로그램이 다시 열립니다.")
+                updater.run_installer(setup)
+                installing = True
+                self.root.after(0, self.root.destroy)
+            else:
+                if not self._ask_on_main(
+                    "업데이트",
+                    f"새 버전 {latest} 이 있습니다 (현재 v{VERSION}).\n\n{notes}\n\n"
+                    "소스 실행 중입니다. git pull 로 받아올까요? 받은 뒤 프로그램을 다시 실행해주세요.",
+                ):
+                    self.log("[업데이트] 나중에 하기로 했습니다.")
+                    return
+                ok, out = updater.git_pull()
+                self.log(f"[업데이트] git pull {'완료' if ok else '실패'}: {out}")
+                if ok:
+                    self.root.after(0, lambda: messagebox.showinfo(
+                        "업데이트", "받아왔습니다. 프로그램을 다시 실행해주세요.", parent=self.root))
+        finally:
+            if not installing:
+                self._updating = False
+                self.root.after(0, lambda: self.update_btn.configure(state="normal"))
 
     # ---------- EasyOCR 환경 ----------
     def _easyocr_needs_install(self) -> bool:

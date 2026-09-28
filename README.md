@@ -30,6 +30,7 @@ TTS 엔진은 [discord_bot_chzzk_tts](https://github.com/GankWaL/discord_bot_chz
 
 [Releases](https://github.com/GankWaL/auto_dubbing_tts/releases) 에서 `AutoDubbingTTS-Setup-<버전>.exe` 를 받아 실행합니다. Python 이 필요 없고, 관리자 권한 없이 현재 사용자에게 설치됩니다 (`%LOCALAPPDATA%\Programs\AutoDubbingTTS`). 설치가 끝나면 바탕화면·시작 메뉴의 **자동 더빙 TTS** 로 바로 실행됩니다.
 
+- 업데이트: 프로그램이 시작할 때 GitHub 릴리스를 조용히 확인하고, 새 버전이 있으면 설치할지 묻습니다. 컨트롤 패널의 **[업데이트 확인]** 으로 직접 확인할 수도 있습니다. 설치 파일을 받아 자동으로 재설치하고 프로그램을 다시 띄우며, 설정·화자 표·EasyOCR 환경은 유지됩니다. 소스로 실행 중이면 `git pull` 을 대신 제안합니다.
 - 제거: 설정 → 앱 → 설치된 앱 → 자동 더빙 TTS. 설정·EasyOCR 환경·목소리 모델까지 지울지 제거할 때 묻습니다.
 - EasyOCR·커스텀 TTS 처럼 무거운 엔진은 설치 파일에 들어 있지 않습니다. EasyOCR 은 컨트롤 패널에서 엔진을 고르면 바로 설치를 제안하고(또는 설치 폴더의 `bat\setup_easyocr.bat`), 커스텀 TTS 는 `bat\setup_tts_server.bat` 으로 따로 만듭니다. 이때만 시스템에 Python 3.10 이상이 필요합니다 (`winget install Python.Python.3.11`).
 
@@ -108,7 +109,7 @@ bat\fake_vn.bat                                   :: 가짜 비주얼노벨 창 
 ```json
 {
   "regions": {"dialogue": [150, 205, 840, 150], "name": [150, 145, 260, 44]},
-  "ocr": {"engine": "windows", "lang": "ko", "scale": 2.0},
+  "ocr": {"engine": "windows", "lang": "ko", "scale": 2.0, "passes": 3, "deskew": true},
   "capture": {"interval_ms": 150, "stable_frames": 3, "change_threshold": 24.0},
   "playback": {"device": null, "policy": "latest", "volume": 1.0},
   "default_speaker": {"voice": "선히", "speed": 1.0, "emotion": "기본"},
@@ -133,6 +134,8 @@ src\
   ocr_server.py      EasyOCR 서버 (ocr_env 에서 실행, 앱이 자동으로 띄움)
   ocr_clova.py       CLOVA OCR API 클라이언트
   speakers.py        이름 정리·자모 유사도 매칭·자동 등록, 화자→목소리
+  updater.py         GitHub 릴리스 확인·설치 파일 다운로드·조용한 재설치 (소스 실행은 git pull)
+  ocr_setup.py       EasyOCR 환경(ocr_env) 설치 — GUI "지금 설치" 와 bat 공용
   player.py          PC 스피커 재생 큐 (최신만 / 순서대로)
   region_select.py   드래그 영역 선택 오버레이
   config.py          config\settings.json
@@ -154,8 +157,8 @@ powershell -ExecutionPolicy Bypass -File installer\build.ps1
 - **릴리스 배포**: `VERSION` 을 올려 커밋·푸시한 뒤 `release-<버전>` 태그를 푸시하면 GitHub Actions 가 설치 파일을 빌드해 릴리스(`v<버전>`)에 올립니다.
 
 ```bash
-git tag -a release-0.1.0 -m "v0.1.0"
-git push origin release-0.1.0
+git tag -a release-0.0.2 -m "v0.0.2"
+git push origin release-0.0.2
 ```
 
 ## 알려진 제약

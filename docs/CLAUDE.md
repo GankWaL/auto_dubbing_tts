@@ -29,6 +29,7 @@ src/
   ocr_easyocr.py   CLOVA CRAFT + EasyOCR — 같은 프로세스(Local) 또는 ocr_server 클라이언트(Remote, 자동 기동)
   ocr_server.py    EasyOCR HTTP 서버 (ocr_env 에서 실행, 포트 51771)
   ocr_setup.py     ocr_env 설치 (시스템 Python 탐색, GPU 유무로 CUDA/CPU torch) — GUI "지금 설치" 와 bat 이 공용
+  updater.py       GitHub 릴리스 확인 → 설치 파일 다운로드 → /SILENT 재설치 (iss 의 [Run] 이 앱을 다시 띄움). 소스 실행은 git pull
   ocr_clova.py     네이버 클라우드 CLOVA OCR API 클라이언트
   speakers.py      이름 정리·자모 유사도 매칭·자동 등록, 화자→목소리
   player.py        재생 큐 (policy: latest | queue)

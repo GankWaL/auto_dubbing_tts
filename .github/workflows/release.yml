@@ -1,5 +1,5 @@
 # release-* 태그를 푸시하면 Windows 설치 파일을 빌드해 GitHub 릴리스(제목 v<버전>)에 올린다.
-# 태그는 release-<src/app_version.py 의 VERSION> (VERSION = "0.1.0" → 태그 release-0.1.0).
+# 태그는 release-<src/app_version.py 의 VERSION> (VERSION = "0.0.2" → 태그 release-0.0.2).
 name: release
 
 on:
