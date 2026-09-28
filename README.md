@@ -15,11 +15,11 @@ TTS 엔진은 [discord_bot_chzzk_tts](https://github.com/GankWaL/discord_bot_chz
 - 드래그로 **대사 영역**과 **이름 영역** 지정 (멀티 모니터 지원)
 - OCR 엔진 3종 선택:
   - **Windows 내장 OCR** (기본) — 별도 설치 없음, 한국어 한 줄 15\~40ms
-  - **CLOVA CRAFT + EasyOCR** — 네이버 CLOVA AI 가 공개한 CRAFT 텍스트 검출기 + EasyOCR 한국어 인식 모델. GPU 권장, `bat\setup_easyocr.bat` 로 별도 환경(ocr_env)에 설치하면 앱이 서버를 자동으로 띄움
+  - **CLOVA CRAFT + EasyOCR** — 네이버 CLOVA AI 가 공개한 CRAFT 텍스트 검출기 + EasyOCR 한국어 인식 모델. 엔진을 고르고 [시작] 하면 환경(ocr_env)이 없을 때 **바로 설치를 제안**하고 로그에 진행을 보여줌 (NVIDIA GPU 면 CUDA 약 2.5GB, 없으면 CPU 빌드 약 200MB, 시스템 Python 3.10 이상 필요). 이후 서버는 자동으로 뜸
   - **CLOVA OCR API** — 네이버 클라우드 유료 API, 설정 창에 URL·Secret 입력
 - 대사가 바뀌고 타자 효과가 끝난 뒤 한 번만 읽음 (OCR 텍스트가 연속 N 프레임 같을 때). 중간에 읽었으면 이어지는 부분만 읽음
 - 화면에 새 이름이 나오면 **화자 자동 등록** → 표에서 더블클릭해 목소리·속도·감정 지정. OCR 오탈자는 자모 단위 유사도 매칭으로 흡수 ("미주"→"민준")
-- 이름이 없는 대사(해설)용 목소리 별도 지정
+- 미등록 화자·해설(이름 없음) 목소리도 속도·감정까지 지정 (옵션의 [설정] 버튼)
 - 재생 정책: **최신 대사만**(새 대사가 오면 끊고 읽기) / **순서대로 모두 읽기**
 - 출력 장치 선택 (가상 오디오 장치를 고르면 OBS 등으로 보낼 수 있음)
 - TTS 엔진 4종: Edge(무료, 기본) · Typecast(감정) · Google Neural2 · 커스텀(GPT-SoVITS, 내 목소리/캐릭터 목소리 복제)
@@ -31,7 +31,7 @@ TTS 엔진은 [discord_bot_chzzk_tts](https://github.com/GankWaL/discord_bot_chz
 [Releases](https://github.com/GankWaL/auto_dubbing_tts/releases) 에서 `AutoDubbingTTS-Setup-<버전>.exe` 를 받아 실행합니다. Python 이 필요 없고, 관리자 권한 없이 현재 사용자에게 설치됩니다 (`%LOCALAPPDATA%\Programs\AutoDubbingTTS`). 설치가 끝나면 바탕화면·시작 메뉴의 **자동 더빙 TTS** 로 바로 실행됩니다.
 
 - 제거: 설정 → 앱 → 설치된 앱 → 자동 더빙 TTS. 설정·EasyOCR 환경·목소리 모델까지 지울지 제거할 때 묻습니다.
-- EasyOCR·커스텀 TTS 처럼 무거운 엔진은 설치 파일에 들어 있지 않고, 설치 폴더의 `bat\setup_easyocr.bat`, `bat\setup_tts_server.bat` 으로 따로 만듭니다 (이때만 Python 필요).
+- EasyOCR·커스텀 TTS 처럼 무거운 엔진은 설치 파일에 들어 있지 않습니다. EasyOCR 은 컨트롤 패널에서 엔진을 고르면 바로 설치를 제안하고(또는 설치 폴더의 `bat\setup_easyocr.bat`), 커스텀 TTS 는 `bat\setup_tts_server.bat` 으로 따로 만듭니다. 이때만 시스템에 Python 3.10 이상이 필요합니다 (`winget install Python.Python.3.11`).
 
 ### 소스로 실행 (개발용)
 
@@ -74,6 +74,20 @@ bat\start.bat     :: 컨트롤 패널 실행
 
 기본은 Windows OCR 이고, 이름 오인식은 자모 매칭이 대부분 흡수합니다. 게임 폰트에 따라 결과가 다르니 **[OCR 테스트]** 로 비교해서 고르세요.
 
+### 게임 화면에서 글자가 깨질 때 (전처리·다중 판독)
+
+반투명 대사 상자, 스캔라인 배경, 굵은 장식 폰트의 이름, 문장 끝에서 깜빡이는 진행 아이콘이 있는 실제 게임 스크린샷으로 원인을 확인하고 다음을 넣었습니다. 모두 기본으로 켜져 있습니다.
+
+| 원인 | 증상 | 대응 |
+|---|---|---|
+| 영역을 글자에 딱 맞게 잘라 여백이 없음 | 첫 글자 오인식 ("씨"→"피") | 배경색 여백 16px 자동 추가 |
+| 확대 배율 하나로만 읽음 | 배율에 따라 다른 글자가 틀림 ("나온"→"나은") | **판독 횟수** 만큼 전처리·배율을 바꿔 읽고 다수결 (기본 3회: 여백 원본, 그레이 1배, 그레이 2배) |
+| 색 글씨·장식 폰트 이름 | 이름이 "9월", "기라" 로 깨짐 | 다수결 + 자모 매칭, 이름처럼 보이지 않는 값은 등록하지 않고 직전 화자 유지 |
+| 문장 끝 진행 아이콘이 글자로 읽힘 | 같은 대사를 계속 새로 읽음 | 끝의 짧은 기호 토큰 제거 + 글자만 비교해 같은 문장이면 다시 읽지 않음 |
+| 이탤릭·기울어진 글씨 | 글자가 완전히 깨짐 (0.70) | **기울기 보정**: 이탤릭 전단을 투영으로 추정해 세움 (0.99). 회전은 Windows OCR 이 스스로 보정 |
+
+판독 횟수를 1 로 두면 한 번만 읽어 가장 빠르고, 4 로 두면 가장 안정적입니다. 대사 한 줄 기준 3회 판독은 150\~250ms 입니다.
+
 ### 커스텀 목소리 (GPT-SoVITS)
 
 `bat\setup_tts_server.bat` 으로 추론 환경을 만들고 `bat\start_tts_server.bat` 으로 서버를 띄우면 `my_voice_models\<이름>\` 의 학습 모델 또는 `my_voice\<이름>\` 의 참조 음성(제로샷)이 목소리 목록에 나타납니다. 녹음·학습 방법은 discord_bot_chzzk_tts README 의 "내 목소리" 절과 같습니다. 문장당 2\~7초(RTX 3070 Ti 기준)가 걸리므로 재생 정책을 "최신 대사만"으로 두는 것을 권장합니다.
@@ -97,8 +111,8 @@ bat\fake_vn.bat                                   :: 가짜 비주얼노벨 창 
   "ocr": {"engine": "windows", "lang": "ko", "scale": 2.0},
   "capture": {"interval_ms": 150, "stable_frames": 3, "change_threshold": 24.0},
   "playback": {"device": null, "policy": "latest", "volume": 1.0},
-  "default_voice": "선히",
-  "narrator_voice": "인준",
+  "default_speaker": {"voice": "선히", "speed": 1.0, "emotion": "기본"},
+  "narrator": {"voice": "인준", "speed": 1.0, "emotion": "기본"},
   "speakers": {"유이": {"voice": "선히", "speed": 1.0, "emotion": "기본"}}
 }
 ```

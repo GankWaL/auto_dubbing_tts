@@ -42,13 +42,13 @@ Source: "..\build\pyinstaller\AutoDubbingTTS\*"; DestDir: "{app}"; Flags: ignore
 Source: "..\src\ocr.py"; DestDir: "{app}\src"; Flags: ignoreversion
 Source: "..\src\ocr_easyocr.py"; DestDir: "{app}\src"; Flags: ignoreversion
 Source: "..\src\ocr_server.py"; DestDir: "{app}\src"; Flags: ignoreversion
+Source: "..\src\ocr_setup.py"; DestDir: "{app}\src"; Flags: ignoreversion
 Source: "..\src\custom_tts_server.py"; DestDir: "{app}\src"; Flags: ignoreversion
 Source: "..\src\setup_custom_tts.py"; DestDir: "{app}\src"; Flags: ignoreversion
 Source: "..\bat\setup_easyocr.bat"; DestDir: "{app}\bat"; Flags: ignoreversion
 Source: "..\bat\start_ocr_server.bat"; DestDir: "{app}\bat"; Flags: ignoreversion
 Source: "..\bat\setup_tts_server.bat"; DestDir: "{app}\bat"; Flags: ignoreversion
 Source: "..\bat\start_tts_server.bat"; DestDir: "{app}\bat"; Flags: ignoreversion
-Source: "..\requirements-easyocr.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\.env.example"; DestDir: "{app}"; Flags: ignoreversion
 ; 설정 파일은 처음 설치할 때만 만든다 (업데이트 때 사용자 키를 덮어쓰지 않음)
 Source: "..\.env.example"; DestDir: "{app}"; DestName: ".env"; Flags: onlyifdoesntexist

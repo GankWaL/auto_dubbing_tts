@@ -175,6 +175,7 @@ class App:
             pass
         self.settings = config.load()
         self.log_q: queue.Queue = queue.Queue()
+        self._installing = False  # EasyOCR 환경 설치 진행 중
         self.dubber = Dubber(self.settings, log=self.log, on_speaker_added=self._on_speaker_added)
         self.voices = list(tts.available_voices())
 
@@ -213,14 +214,17 @@ class App:
         # --- 옵션 ---
         opt = ttk.LabelFrame(outer, text="옵션", padding=8)
         opt.pack(fill="x", pady=(8, 0))
-        ttk.Label(opt, text="미등록 화자 목소리").grid(row=0, column=0, sticky="w")
-        self.default_voice = ttk.Combobox(opt, values=self.voices, state="readonly", width=18)
-        self.default_voice.set(self.settings["default_voice"])
-        self.default_voice.grid(row=0, column=1, sticky="w", padx=(4, 16))
-        ttk.Label(opt, text="해설(이름 없음) 목소리").grid(row=0, column=2, sticky="w")
-        self.narrator_voice = ttk.Combobox(opt, values=self.voices, state="readonly", width=18)
-        self.narrator_voice.set(self.settings["narrator_voice"])
-        self.narrator_voice.grid(row=0, column=3, sticky="w", padx=4)
+        # 미등록 화자·해설 목소리: 목소리·속도·감정을 SpeakerEditor 로 편집한다
+        self.voice_labels = {}
+        for col, (key, title) in enumerate([("default_speaker", "미등록 화자 목소리"), ("narrator", "해설(이름 없음) 목소리")]):
+            ttk.Label(opt, text=title).grid(row=0, column=col * 2, sticky="w")
+            cell = ttk.Frame(opt)
+            cell.grid(row=0, column=col * 2 + 1, sticky="w", padx=(4, 16))
+            lbl = ttk.Label(cell, text="", width=20)
+            lbl.pack(side="left")
+            ttk.Button(cell, text="설정", width=5, command=lambda k=key, t=title: self.edit_voice_preset(k, t)).pack(side="left")
+            self.voice_labels[key] = lbl
+        self._refresh_voice_presets()
 
         ttk.Label(opt, text="재생 정책").grid(row=1, column=0, sticky="w", pady=(6, 0))
         self.policy = ttk.Combobox(opt, values=list(POLICIES.values()), state="readonly", width=22)
@@ -248,9 +252,17 @@ class App:
         self.stable = ttk.Spinbox(opt, from_=1, to=20, width=6)
         self.stable.set(int(self.settings["capture"]["stable_frames"]))
         self.stable.grid(row=3, column=3, sticky="w", padx=4, pady=(6, 0))
-        for w in (self.default_voice, self.narrator_voice, self.policy, self.device, self.engine):
+
+        ttk.Label(opt, text="판독 횟수 (다수결)").grid(row=4, column=0, sticky="w", pady=(6, 0))
+        self.passes = ttk.Spinbox(opt, from_=1, to=4, width=6)
+        self.passes.set(int(self.settings["ocr"].get("passes", 3)))
+        self.passes.grid(row=4, column=1, sticky="w", padx=4, pady=(6, 0))
+        self.deskew_var = tk.BooleanVar(value=bool(self.settings["ocr"].get("deskew", True)))
+        ttk.Checkbutton(opt, text="기울기 보정 (회전·이탤릭)", variable=self.deskew_var,
+                        command=self.apply_options).grid(row=4, column=2, columnspan=2, sticky="w", pady=(6, 0))
+        for w in (self.policy, self.device, self.engine):
             w.bind("<<ComboboxSelected>>", lambda e: self.apply_options())
-        for w in (self.scale, self.stable):
+        for w in (self.scale, self.stable, self.passes):
             w.bind("<FocusOut>", lambda e: self.apply_options())
             w.bind("<Return>", lambda e: self.apply_options())
 
@@ -301,25 +313,102 @@ class App:
             pass
         if self.dubber.running:
             self.status.configure(text="● 더빙 중", foreground="#2e7d32")
-        else:
+        elif not self._installing:
             self.status.configure(text="● 정지", foreground="#888")
             self.start_btn.configure(state="normal")
             self.stop_btn.configure(state="disabled")
         self.root.after(150, self._poll_log)
 
     def _reload_voices(self) -> None:
-        """.env 저장 후 목소리 목록을 다시 읽어 콤보박스에 반영한다."""
+        """.env 저장 후 목소리 목록을 다시 읽는다. 사라진 목소리는 기본 목소리로 되돌린다."""
         self.voices = list(tts.available_voices())
-        for combo in (self.default_voice, self.narrator_voice):
-            combo.configure(values=self.voices)
-            if combo.get() not in self.voices:
-                combo.set(tts.DEFAULT_VOICE)
+        for key in ("default_speaker", "narrator"):
+            if self.settings[key]["voice"] not in self.voices:
+                self.settings[key]["voice"] = tts.DEFAULT_VOICE
+        self._refresh_voice_presets()
         self.apply_options()
         self.log(f"설정 저장됨 — 사용 가능한 목소리 {len(self.voices)}개")
+
+    # ---------- 미등록 화자·해설 목소리 ----------
+    @staticmethod
+    def _voice_summary(cfg: dict) -> str:
+        return f"{cfg['voice']} · {float(cfg.get('speed', 1.0)):.1f}배 · {cfg.get('emotion', '기본')}"
+
+    def _refresh_voice_presets(self) -> None:
+        for key, lbl in self.voice_labels.items():
+            lbl.configure(text=self._voice_summary(self.settings[key]))
+
+    def edit_voice_preset(self, key: str, title: str) -> None:
+        def save(cfg):
+            self.settings[key] = cfg
+            config.save(self.settings)
+            self._refresh_voice_presets()
+
+        SpeakerEditor(self.root, title, self.settings[key], self.voices, save)
+
+    # ---------- EasyOCR 환경 ----------
+    def _easyocr_needs_install(self) -> bool:
+        """엔진이 EasyOCR 인데 같은 프로세스에도, ocr_env 에도, 떠 있는 서버에도 없으면 True."""
+        if self.settings["ocr"].get("engine") != "easyocr":
+            return False
+        try:
+            import easyocr  # noqa: F401
+            import torch  # noqa: F401
+            return False
+        except ImportError:
+            pass
+        import ocr_easyocr
+
+        return not os.path.isfile(ocr_easyocr.OCR_ENV_PYTHON) and ocr_easyocr.server_health() is None
+
+    def _offer_easyocr_install(self, then) -> None:
+        """설치를 제안하고, 수락하면 백그라운드로 설치한 뒤 then() 을 이어서 실행한다."""
+        import ocr_setup
+
+        gpu = ocr_setup.has_nvidia_gpu()
+        size = "약 2.5GB (CUDA)" if gpu else "약 200MB (CPU 빌드, NVIDIA GPU 없음)"
+        if not messagebox.askyesno(
+            "EasyOCR 설치",
+            "CLOVA CRAFT + EasyOCR 엔진 환경(ocr_env)이 없습니다.\n\n"
+            f"지금 설치할까요? 다운로드 {size}, 수 분 걸립니다.\n"
+            "시스템에 Python 3.10 이상이 있어야 합니다. 진행 상황은 로그에 표시됩니다.",
+            parent=self.root,
+        ):
+            return
+        self.start_btn.configure(state="disabled")
+        self.status.configure(text="● EasyOCR 설치 중", foreground="#e65100")
+        self._installing = True
+
+        def work():
+            try:
+                ok = ocr_setup.install_ocr_env(self.log)
+            except Exception as e:
+                self.log(f"[EasyOCR 설치] 오류: {e}")
+                ok = False
+            finally:
+                self._installing = False
+
+            def done():
+                self.start_btn.configure(state="normal")
+                if ok:
+                    then()
+                else:
+                    messagebox.showerror(
+                        "EasyOCR 설치", "설치에 실패했습니다. 로그를 확인해주세요.\n"
+                        "Python 이 없다면 터미널에서: winget install Python.Python.3.11",
+                        parent=self.root,
+                    )
+
+            self.root.after(0, done)
+
+        threading.Thread(target=work, daemon=True).start()
 
     # ---------- 시작/정지 ----------
     def start(self) -> None:
         self.apply_options()
+        if self._easyocr_needs_install():
+            self._offer_easyocr_install(self.start)
+            return
         try:
             self.dubber.start()
         except Exception as e:
@@ -369,6 +458,9 @@ class App:
             messagebox.showinfo("OCR 테스트", "대사 영역을 먼저 선택해주세요.", parent=self.root)
             return
         self.apply_options()
+        if self._easyocr_needs_install():
+            self._offer_easyocr_install(self.test_ocr)
+            return
 
         def work():
             import time
@@ -378,13 +470,18 @@ class App:
 
             try:
                 grabber = ScreenGrabber()
-                engine = ocr.create_engine(self.settings["ocr"])
-                scale = float(self.settings["ocr"]["scale"])
+                cfg = self.settings["ocr"]
+                engine = ocr.create_engine(cfg)
+                scale, passes, deskew = float(cfg["scale"]), int(cfg.get("passes", 3)), bool(cfg.get("deskew", True))
                 t0 = time.perf_counter()
-                text = clean_dialogue(engine.recognize(grabber.grab(tuple(regions["dialogue"])), scale).text)
+                text = clean_dialogue(
+                    engine.recognize_robust(grabber.grab(tuple(regions["dialogue"])), scale, passes, deskew).text
+                )
                 name = ""
                 if regions.get("name"):
-                    name = clean_name(engine.recognize(grabber.grab(tuple(regions["name"])), scale).text)
+                    name = clean_name(
+                        engine.recognize_robust(grabber.grab(tuple(regions["name"])), scale, passes, deskew).text
+                    )
                 elapsed = (time.perf_counter() - t0) * 1000
                 grabber.close()
                 self.log(f"[OCR 테스트 · {engine.label} · {elapsed:.0f}ms] 이름='{name}' 대사='{text}'")
@@ -396,15 +493,15 @@ class App:
     # ---------- 옵션 ----------
     def apply_options(self) -> None:
         s = self.settings
-        s["default_voice"] = self.default_voice.get() or s["default_voice"]
-        s["narrator_voice"] = self.narrator_voice.get() or s["narrator_voice"]
         s["playback"]["policy"] = next((k for k, v in POLICIES.items() if v == self.policy.get()), "latest")
         dev = self.device.get()
         s["playback"]["device"] = int(dev.split(":")[0]) if dev and dev != DEFAULT_DEVICE else None
         s["ocr"]["engine"] = next((k for k, v in ocr.ENGINES.items() if v == self.engine.get()), "windows")
+        s["ocr"]["deskew"] = bool(self.deskew_var.get())
         try:
             s["ocr"]["scale"] = max(1.0, min(4.0, float(self.scale.get())))
             s["capture"]["stable_frames"] = max(1, int(self.stable.get()))
+            s["ocr"]["passes"] = max(1, min(4, int(self.passes.get())))
         except ValueError:
             pass
         config.save(s)
@@ -441,9 +538,7 @@ class App:
             name = entry.get().strip()
             if not name:
                 return
-            self.settings["speakers"].setdefault(
-                name, {"voice": self.settings["default_voice"], "speed": 1.0, "emotion": "기본"}
-            )
+            self.settings["speakers"].setdefault(name, dict(self.settings["default_speaker"]))
             config.save(self.settings)
             self._refresh_speakers()
             win.destroy()
