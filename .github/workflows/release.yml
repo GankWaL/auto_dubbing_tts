@@ -1,0 +1,41 @@
+# release-* 태그를 푸시하면 Windows 설치 파일을 빌드해 GitHub 릴리스(제목 v<버전>)에 올린다.
+# 태그는 release-<src/app_version.py 의 VERSION> (VERSION = "0.1.0" → 태그 release-0.1.0).
+name: release
+
+on:
+  push:
+    tags: ["release-*"]
+
+permissions:
+  contents: write
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tag matches app version
+        shell: pwsh
+        run: |
+          $version = (Select-String src/app_version.py -Pattern 'VERSION\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+          if ("release-$version" -ne "${{ github.ref_name }}") { throw "tag ${{ github.ref_name }} != release-$version (src/app_version.py)" }
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+
+      - name: Build installer
+        shell: pwsh
+        run: ./installer/build.ps1
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^release-', ''
+          gh release create "${{ github.ref_name }}" (Get-ChildItem build/release/*.exe).FullName --title "v$version" --generate-notes

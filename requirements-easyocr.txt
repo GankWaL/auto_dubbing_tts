@@ -1,0 +1,4 @@
+# ocr_env 용 (bat\setup_easyocr.bat). torch 는 그 스크립트가 CUDA 빌드로 먼저 설치한다.
+easyocr>=1.7
+pillow>=10.0
+numpy>=1.26

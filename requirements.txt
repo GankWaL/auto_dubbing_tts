@@ -1,0 +1,15 @@
+mss>=10.0
+pillow>=10.0
+numpy>=1.26
+winrt-runtime>=3.0
+winrt-Windows.Foundation>=3.0
+winrt-Windows.Foundation.Collections>=3.0
+winrt-Windows.Globalization>=3.0
+winrt-Windows.Graphics.Imaging>=3.0
+winrt-Windows.Media.Ocr>=3.0
+winrt-Windows.Storage.Streams>=3.0
+sounddevice>=0.5
+soundfile>=0.13
+edge-tts>=6.1
+aiohttp>=3.9
+python-dotenv>=1.0
